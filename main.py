@@ -195,8 +195,44 @@ def build_scan_plan(args: argparse.Namespace) -> list[dict]:
     return [task for task in scan_registry if task["enabled"]]
 
 
+def _enrich_scan_plan(scan_plan: list[dict], current_idx: int, results: dict) -> None:
+    """Pass discovered data from completed modules to upcoming modules.
+
+    After each module finishes, this function inspects the accumulated
+    results and injects relevant data into the kwargs of subsequent
+    modules that can benefit from it. Currently enriches:
+      - HTTPProbe: receives discovered subdomains and open ports.
+
+    Args:
+        scan_plan: Mutable list of scan task descriptors.
+        current_idx: Index of the module that just completed.
+        results: Master results dictionary with all completed module outputs.
+    """
+    modules = results.get("modules", {})
+
+    for future_task in scan_plan[current_idx + 1:]:
+        if future_task["key"] == "http":
+            sub_data = modules.get("subdomains", {})
+            if isinstance(sub_data, dict):
+                discovered = sub_data.get("discovered", [])
+                future_task["kwargs"]["subdomains"] = [
+                    s["subdomain"] for s in discovered
+                ]
+
+            port_data = modules.get("ports", {})
+            if isinstance(port_data, dict):
+                open_ports = port_data.get("open_ports", [])
+                future_task["kwargs"]["open_ports"] = [
+                    p["port"] for p in open_ports
+                ]
+
+
 def execute_scan(target: str, scan_plan: list[dict]) -> dict:
     """Execute each scan module in order and aggregate results.
+
+    Runs modules sequentially, enriching later modules with data
+    discovered by earlier ones (e.g., subdomains and open ports
+    are forwarded to the HTTP probe module).
 
     Args:
         target: The target domain or IP address.
@@ -220,7 +256,7 @@ def execute_scan(target: str, scan_plan: list[dict]) -> dict:
     summary_table.add_column("Status", justify="center", min_width=10)
     summary_table.add_column("Duration", justify="right", min_width=10)
 
-    for task in scan_plan:
+    for idx, task in enumerate(scan_plan):
         module_name = task["name"]
         module_key = task["key"]
         console.print(f"\n[bold yellow][*] Running: {module_name}...[/bold yellow]")
@@ -232,6 +268,7 @@ def execute_scan(target: str, scan_plan: list[dict]) -> dict:
             elapsed = time.time() - start_time
 
             results["modules"][module_key] = module_result
+            _enrich_scan_plan(scan_plan, idx, results)
             summary_table.add_row(
                 module_name,
                 "[bold green]✓ Done[/bold green]",

@@ -33,6 +33,7 @@ from modules import (
     PortScanner,
     HTTPProbe,
 )
+from modules.reporter import ReportGenerator
 
 VERSION = "1.0.0"
 
@@ -294,102 +295,6 @@ def execute_scan(target: str, scan_plan: list[dict]) -> dict:
     return results
 
 
-def save_json_report(results: dict, filepath: str) -> None:
-    """Serialize scan results to a JSON file.
-
-    Args:
-        results: Master results dictionary.
-        filepath: Absolute path for the output JSON file.
-    """
-    with open(filepath, "w", encoding="utf-8") as json_file:
-        json.dump(results, json_file, indent=2, ensure_ascii=False, default=str)
-
-
-def save_txt_report(results: dict, filepath: str) -> None:
-    """Write a human-readable plaintext report from scan results.
-
-    Args:
-        results: Master results dictionary.
-        filepath: Absolute path for the output TXT file.
-    """
-    lines = []
-    lines.append("=" * 60)
-    lines.append("  ARGUS RECON REPORT")
-    lines.append("=" * 60)
-    lines.append(f"  Target    : {results.get('target', 'N/A')}")
-    lines.append(f"  Scan Start: {results.get('scan_start', 'N/A')}")
-    lines.append(f"  Scan End  : {results.get('scan_end', 'N/A')}")
-    lines.append("=" * 60)
-
-    modules = results.get("modules", {})
-    for module_name, module_data in modules.items():
-        lines.append(f"\n{'─' * 60}")
-        lines.append(f"  [{module_name.upper()}]")
-        lines.append(f"{'─' * 60}")
-        _flatten_dict_to_lines(module_data, lines, indent=4)
-
-    lines.append(f"\n{'=' * 60}")
-    lines.append("  END OF REPORT")
-    lines.append("=" * 60)
-
-    with open(filepath, "w", encoding="utf-8") as txt_file:
-        txt_file.write("\n".join(lines) + "\n")
-
-
-def _flatten_dict_to_lines(
-    data: dict | list | str, lines: list[str], indent: int = 0
-) -> None:
-    """Recursively flatten nested data structures into indented text lines.
-
-    Args:
-        data: The data to flatten (dict, list, or scalar).
-        lines: Accumulator list of formatted lines.
-        indent: Current indentation level in spaces.
-    """
-    prefix = " " * indent
-    if isinstance(data, dict):
-        for key, value in data.items():
-            if isinstance(value, (dict, list)):
-                lines.append(f"{prefix}{key}:")
-                _flatten_dict_to_lines(value, lines, indent + 2)
-            else:
-                lines.append(f"{prefix}{key}: {value}")
-    elif isinstance(data, list):
-        for item in data:
-            if isinstance(item, (dict, list)):
-                _flatten_dict_to_lines(item, lines, indent + 2)
-            else:
-                lines.append(f"{prefix}- {item}")
-    else:
-        lines.append(f"{prefix}{data}")
-
-
-def save_reports(results: dict, output_dir: str, target: str) -> tuple[str, str]:
-    """Save scan results in both JSON and TXT formats.
-
-    Args:
-        results: Master results dictionary.
-        output_dir: Directory path for saving reports.
-        target: Original target string for filename generation.
-
-    Returns:
-        tuple[str, str]: Paths to the saved JSON and TXT reports.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_target = target.replace(".", "_").replace("/", "_").replace(":", "_")
-    base_name = f"argus_{safe_target}_{timestamp}"
-
-    json_path = os.path.join(output_dir, f"{base_name}.json")
-    txt_path = os.path.join(output_dir, f"{base_name}.txt")
-
-    save_json_report(results, json_path)
-    save_txt_report(results, txt_path)
-
-    return json_path, txt_path
-
-
 def main() -> None:
     """Argus entry point — parse arguments, execute scans, and save reports."""
     display_banner()
@@ -413,19 +318,16 @@ def main() -> None:
 
     results = execute_scan(target, scan_plan)
 
-    output_dir = args.output or os.path.join(
+    default_output_dir = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "output"
     )
-    json_path, txt_path = save_reports(results, output_dir, target)
-
-    console.print(
-        Panel(
-            f"[bold white]JSON:[/bold white] [green]{json_path}[/green]\n"
-            f"[bold white]TXT :[/bold white] [green]{txt_path}[/green]",
-            title="[bold cyan]Reports Saved[/bold cyan]",
-            border_style="green",
-        )
+    reporter = ReportGenerator(
+        results=results,
+        target=target,
+        output_path=args.output,
+        default_output_dir=default_output_dir,
     )
+    reporter.generate()
 
     console.print("\n[bold green][✓] Argus scan complete.[/bold green]\n")
 

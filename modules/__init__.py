@@ -12,6 +12,7 @@ from modules.subdomain_enum import SubdomainEnumerator
 from modules.port_scanner import PortScanner
 from modules.banner_grabber import BannerGrabber
 from modules.http_probe import HTTPProbe
+from modules.reporter import ReportGenerator
 
 __all__ = [
     "WhoisLookup",
@@ -20,4 +21,6 @@ __all__ = [
     "PortScanner",
     "BannerGrabber",
     "HTTPProbe",
+    "ReportGenerator",
 ]
+

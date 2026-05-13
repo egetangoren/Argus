@@ -105,9 +105,11 @@ def parse_arguments() -> argparse.Namespace:
     )
     scan_group.add_argument(
         "--ports",
-        action="store_true",
-        default=False,
-        help="Scan TCP ports on the target host",
+        nargs="?",
+        const="default",
+        default=None,
+        metavar="RANGE",
+        help="Scan TCP ports (default: top 100). Accepts: 1-1024, 80,443,8080, or mixed",
     )
     scan_group.add_argument(
         "--http",
@@ -126,7 +128,7 @@ def parse_arguments() -> argparse.Namespace:
 
     args = parser.parse_args()
 
-    scan_flags = [args.whois, args.dns, args.sub, args.ports, args.http]
+    scan_flags = [args.whois, args.dns, args.sub, args.ports is not None, args.http]
     if not args.all and not any(scan_flags):
         console.print(
             "[bold red][!] Error:[/bold red] No scan module selected. "
@@ -177,9 +179,9 @@ def build_scan_plan(args: argparse.Namespace) -> list[dict]:
         {
             "key": "ports",
             "name": "Port Scan",
-            "enabled": run_all or args.ports,
+            "enabled": run_all or args.ports is not None,
             "cls": PortScanner,
-            "kwargs": {},
+            "kwargs": {"ports": args.ports or "default"},
         },
         {
             "key": "http",
